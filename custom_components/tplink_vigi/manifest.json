@@ -1,0 +1,17 @@
+{
+  "domain": "tplink_vigi",
+  "name": "TP-Link Vigi",
+  "codeowners": [
+    "@tanghq33"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.home-assistant.io/integrations/tplink_vigi",
+  "homekit": {},
+  "iot_class": "local_push",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "version": "0.0.1"
+}
