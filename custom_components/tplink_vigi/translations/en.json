@@ -5,30 +5,17 @@
         "title": "Add TP-Link VIGI Camera",
         "description": "Configure your first VIGI camera. The camera will send webhook notifications to Home Assistant.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
         "data": {
-          "name": "Camera Name",
+          "name": "Device Name",
           "webhook_id": "Webhook ID (optional, auto-generated from name)",
           "reset_delay": "Auto-reset delay (seconds)"
         }
       },
       "confirm": {
         "title": "Camera Added: {camera_name}",
-        "description": "Configure your camera to send events to this webhook URL:\n\n**`{webhook_url}`**\n\nWebhook ID: `{webhook_id}`\n\nWould you like to add another camera?",
-        "data": {
-          "add_another": "Add another camera"
-        }
-      },
-      "add_another": {
-        "title": "Add Another Camera",
-        "description": "Add camera #{camera_count} to your TP-Link VIGI integration.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
-        "data": {
-          "name": "Camera Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)",
-          "reset_delay": "Auto-reset delay (seconds)"
-        }
+        "description": "Configure your camera to send events to this webhook URL:\n\n**`{webhook_url}`**\n\nWebhook ID: `{webhook_id}`"
       }
     },
     "error": {
-      "duplicate_name": "A camera with this name already exists",
       "duplicate_webhook": "This webhook ID is already in use",
       "invalid_webhook_id": "Webhook ID can only contain lowercase letters, numbers, and underscores",
       "invalid_reset_delay": "Reset delay must be between 1 and 60 seconds"
