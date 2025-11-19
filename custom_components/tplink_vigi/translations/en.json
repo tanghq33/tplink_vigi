@@ -6,7 +6,8 @@
         "description": "Configure your first VIGI camera. The camera will send webhook notifications to Home Assistant.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
         "data": {
           "name": "Camera Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)"
+          "webhook_id": "Webhook ID (optional, auto-generated from name)",
+          "reset_delay": "Auto-reset delay (seconds)"
         }
       },
       "confirm": {
@@ -21,14 +22,16 @@
         "description": "Add camera #{camera_count} to your TP-Link VIGI integration.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
         "data": {
           "name": "Camera Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)"
+          "webhook_id": "Webhook ID (optional, auto-generated from name)",
+          "reset_delay": "Auto-reset delay (seconds)"
         }
       }
     },
     "error": {
       "duplicate_name": "A camera with this name already exists",
       "duplicate_webhook": "This webhook ID is already in use",
-      "invalid_webhook_id": "Webhook ID can only contain lowercase letters, numbers, and underscores"
+      "invalid_webhook_id": "Webhook ID can only contain lowercase letters, numbers, and underscores",
+      "invalid_reset_delay": "Reset delay must be between 1 and 60 seconds"
     },
     "abort": {
       "already_configured": "This webhook ID is already configured",
@@ -39,50 +42,28 @@
   "options": {
     "step": {
       "init": {
-        "title": "Manage TP-Link VIGI Cameras",
-        "menu_options": {
-          "add_camera": "Add Camera",
-          "edit_camera": "Edit Camera",
-          "remove_camera": "Remove Camera"
-        }
-      },
-      "add_camera": {
-        "title": "Add New Camera",
-        "description": "Add a new camera to this integration.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
-        "data": {
-          "name": "Camera Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)"
-        }
-      },
-      "edit_camera": {
-        "title": "Edit Camera",
+        "title": "Edit Camera Settings",
         "description": "Select a camera to edit:",
         "data": {
           "camera_select": "Camera"
         }
       },
       "edit_camera_form": {
-        "title": "Edit Camera Details",
-        "description": "**Warning:** Changing the webhook ID will change the webhook URL. You'll need to update your camera configuration.\n\nOld webhook ID: `{old_webhook_id}`",
+        "title": "Edit Camera Settings",
+        "description": "**Warning:** Changing the webhook ID will change the webhook URL. You'll need to update your camera configuration.\n\nTo rename the camera, use Home Assistant's device settings.\n\nOld webhook ID: `{old_webhook_id}`",
         "data": {
-          "name": "Camera Name",
-          "webhook_id": "Webhook ID"
-        }
-      },
-      "remove_camera": {
-        "title": "Remove Camera",
-        "description": "Select a camera to remove:",
-        "data": {
-          "camera_select": "Camera"
-        }
-      },
-      "remove_camera_confirm": {
-        "title": "Confirm Camera Removal",
-        "description": "Are you sure you want to remove this camera?\n\n**Camera:** {camera_name}\n**Webhook ID:** {webhook_id}\n\nThis will remove the binary sensor entity and unregister the webhook.",
-        "data": {
-          "confirm": "Yes, remove this camera"
+          "webhook_id": "Webhook ID",
+          "reset_delay": "Auto-reset delay (seconds)"
         }
       }
+    },
+    "error": {
+      "duplicate_webhook": "This webhook ID is already in use",
+      "invalid_webhook_id": "Webhook ID can only contain lowercase letters, numbers, and underscores",
+      "invalid_reset_delay": "Reset delay must be between 1 and 60 seconds"
+    },
+    "abort": {
+      "no_cameras": "No cameras configured"
     }
   }
 }

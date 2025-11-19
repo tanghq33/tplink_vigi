@@ -135,3 +135,4 @@ dmypy.json
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+.DS_Store

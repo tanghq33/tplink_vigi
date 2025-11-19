@@ -22,12 +22,15 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_WEBHOOK_ID, DOMAIN
+from .const import (
+    CONF_CAMERA_ID,
+    CONF_RESET_DELAY,
+    CONF_WEBHOOK_ID,
+    DEFAULT_RESET_DELAY,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-# Time in seconds before resetting sensor back to off
-RESET_DELAY = 5
 
 
 async def async_setup_entry(
@@ -43,14 +46,31 @@ async def async_setup_entry(
     for camera in cameras:
         camera_name: str = camera[CONF_NAME]
         webhook_id: str = camera[CONF_WEBHOOK_ID]
+        reset_delay: int = camera.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY)
 
-        # Use webhook_id as the camera_id for internal tracking
-        camera_id = webhook_id
+        # Use permanent camera_id (UUID) for stable device/entity identity
+        # If camera_id doesn't exist (old config), generate one and update
+        camera_id = camera.get(CONF_CAMERA_ID)
+        if not camera_id:
+            import uuid
+            camera_id = str(uuid.uuid4())
+            camera[CONF_CAMERA_ID] = camera_id
+            # Update the entry data to persist the UUID
+            hass.config_entries.async_update_entry(
+                entry,
+                data={"cameras": cameras},
+            )
+            _LOGGER.info(
+                "Generated camera_id %s for camera '%s'",
+                camera_id,
+                camera_name,
+            )
 
         # Store camera data in hass.data for webhook handler access
         hass.data[DOMAIN][entry.entry_id]["cameras"][camera_id] = {
             "name": camera_name,
             "webhook_id": webhook_id,
+            "reset_delay": reset_delay,
             "is_on": False,
             "last_event": None,
             "last_event_time": None,
@@ -58,9 +78,16 @@ async def async_setup_entry(
 
         # Create binary sensor entity
         sensor = VigiCameraBinarySensor(
-            hass, entry, camera_id, camera_name, webhook_id
+            hass, entry, camera_id, camera_name, webhook_id, reset_delay
         )
         sensors.append(sensor)
+
+        # Unregister webhook if it already exists (prevents "Handler already defined" error)
+        try:
+            webhook_unregister(hass, webhook_id)
+            _LOGGER.debug("Unregistered existing webhook /api/webhook/%s", webhook_id)
+        except Exception:  # noqa: BLE001
+            pass  # Webhook doesn't exist, which is fine
 
         # Register webhook for this camera
         webhook_register(
@@ -85,15 +112,21 @@ async def async_unload_entry(
     entry: ConfigEntry,
 ) -> bool:
     """Unload binary sensors and unregister webhooks."""
-    # Get all cameras for this entry
-    entry_data = hass.data[DOMAIN].get(entry.entry_id)
-    if entry_data:
-        cameras = entry_data.get("cameras", {})
-        for camera_id, camera_data in cameras.items():
-            webhook_id = camera_data.get("webhook_id")
-            if webhook_id:
+    # CRITICAL: Unregister webhooks based on entry.data (the actual registered webhooks)
+    # NOT from hass.data which may have new webhook IDs after config changes
+    cameras = entry.data.get("cameras", [])
+    for camera in cameras:
+        webhook_id = camera.get(CONF_WEBHOOK_ID)
+        if webhook_id:
+            try:
                 webhook_unregister(hass, webhook_id)
                 _LOGGER.info("Unregistered webhook /api/webhook/%s", webhook_id)
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Failed to unregister webhook %s: %s (may not exist)",
+                    webhook_id,
+                    e,
+                )
 
     return True
 
@@ -111,6 +144,7 @@ class VigiCameraBinarySensor(BinarySensorEntity):
         camera_id: str,
         camera_name: str,
         webhook_id: str,
+        reset_delay: int,
     ) -> None:
         """Initialize the binary sensor."""
         self._hass = hass
@@ -118,6 +152,7 @@ class VigiCameraBinarySensor(BinarySensorEntity):
         self._camera_id = camera_id
         self._camera_name = camera_name
         self._webhook_id = webhook_id
+        self._reset_delay = reset_delay
         self._attr_name = f"{camera_name} Motion"
         self._attr_unique_id = f"{entry.entry_id}_{camera_id}_motion"
         self._attr_is_on = False
@@ -199,15 +234,18 @@ class VigiCameraBinarySensor(BinarySensorEntity):
                 }
 
                 # Update stored camera data
-                hass.data[DOMAIN][self._entry.entry_id]["cameras"][self._camera_id][
-                    "is_on"
-                ] = True
-                hass.data[DOMAIN][self._entry.entry_id]["cameras"][self._camera_id][
-                    "last_event"
-                ] = event_types
-                hass.data[DOMAIN][self._entry.entry_id]["cameras"][self._camera_id][
-                    "last_event_time"
-                ] = event_time
+                try:
+                    camera_data = hass.data[DOMAIN][self._entry.entry_id]["cameras"][self._camera_id]
+                    camera_data["is_on"] = True
+                    camera_data["last_event"] = event_types
+                    camera_data["last_event_time"] = event_time
+                except KeyError:
+                    _LOGGER.warning(
+                        "Camera data not found for %s (camera_id: %s). "
+                        "Webhook may be outdated after configuration change.",
+                        self._attr_name,
+                        self._camera_id,
+                    )
 
                 # Update entity state in Home Assistant
                 self.async_write_ha_state()
@@ -233,11 +271,15 @@ class VigiCameraBinarySensor(BinarySensorEntity):
 
     async def _reset_to_off(self) -> None:
         """Reset binary sensor to off state after delay."""
-        await asyncio.sleep(RESET_DELAY)
+        await asyncio.sleep(self._reset_delay)
         self._attr_is_on = False
-        self._hass.data[DOMAIN][self._entry.entry_id]["cameras"][self._camera_id][
-            "is_on"
-        ] = False
+        try:
+            self._hass.data[DOMAIN][self._entry.entry_id]["cameras"][self._camera_id]["is_on"] = False
+        except KeyError:
+            _LOGGER.debug(
+                "Camera data not found for %s during reset. Webhook may be outdated.",
+                self._attr_name,
+            )
         self.async_write_ha_state()
         _LOGGER.debug("Reset %s to off state", self._attr_name)
 

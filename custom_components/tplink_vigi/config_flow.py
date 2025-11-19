@@ -5,16 +5,28 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+import uuid
 
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.components.webhook import async_unregister as webhook_unregister
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.network import get_url
+from homeassistant.helpers.selector import selector
 
-from .const import DOMAIN, CONF_WEBHOOK_ID
+from .const import (
+    DOMAIN,
+    CONF_CAMERA_ID,
+    CONF_WEBHOOK_ID,
+    CONF_RESET_DELAY,
+    DEFAULT_RESET_DELAY,
+    MIN_RESET_DELAY,
+    MAX_RESET_DELAY,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +49,49 @@ def _validate_webhook_id(webhook_id: str) -> bool:
     Must contain only lowercase letters, numbers, and underscores.
     """
     return bool(WEBHOOK_ID_PATTERN.match(webhook_id))
+
+
+def _get_base_url(hass: HomeAssistant) -> str:
+    """Get base URL for webhook display."""
+    try:
+        return get_url(hass)
+    except Exception:  # noqa: BLE001
+        return "http://homeassistant.local:8123"
+
+
+def _check_duplicate_webhook_id(
+    hass: HomeAssistant,
+    webhook_id: str,
+    exclude_entry_id: str | None = None,
+    exclude_cameras: list[dict[str, Any]] | None = None,
+) -> bool:
+    """Check if webhook ID already exists in any config entry.
+
+    Args:
+        hass: Home Assistant instance
+        webhook_id: The webhook ID to check
+        exclude_entry_id: Optional entry ID to exclude from check
+        exclude_cameras: Optional list of cameras to exclude from check
+
+    Returns:
+        True if duplicate found, False otherwise
+    """
+    exclude_cameras = exclude_cameras or []
+    exclude_webhook_ids = {cam.get(CONF_WEBHOOK_ID) for cam in exclude_cameras}
+
+    # Check against all existing config entries
+    existing_entries = hass.config_entries.async_entries(DOMAIN)
+    for entry in existing_entries:
+        # Skip excluded entry if specified
+        if exclude_entry_id and entry.entry_id == exclude_entry_id:
+            continue
+
+        for existing_camera in entry.data.get("cameras", []):
+            existing_webhook_id = existing_camera.get(CONF_WEBHOOK_ID)
+            if existing_webhook_id == webhook_id and existing_webhook_id not in exclude_webhook_ids:
+                return True
+
+    return False
 
 
 class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -68,28 +123,44 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Validate webhook ID format
             if not _validate_webhook_id(webhook_id):
                 errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
-            else:
+            elif _check_duplicate_webhook_id(self.hass, webhook_id, exclude_cameras=self._cameras):
                 # Check for duplicate webhook ID across all entries
+                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
+            else:
+                # Set unique ID for this config entry
                 await self.async_set_unique_id(webhook_id)
                 self._abort_if_unique_id_configured()
 
-                # Store camera data temporarily
+                # Store camera data temporarily with UUID
                 self._cameras.append({
+                    CONF_CAMERA_ID: str(uuid.uuid4()),  # Generate permanent UUID
                     CONF_NAME: camera_name,
                     CONF_WEBHOOK_ID: webhook_id,
+                    CONF_RESET_DELAY: user_input.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY),
                 })
 
                 # Show confirmation with webhook URL
                 return await self.async_step_confirm()
 
         # Get base URL for webhook display
-        base_url = self.hass.config.api.base_url if self.hass.config.api else "http://homeassistant.local:8123"
+        base_url = _get_base_url(self.hass)
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_NAME): cv.string,
                 vol.Optional(CONF_WEBHOOK_ID): cv.string,
+                vol.Required(
+                    CONF_RESET_DELAY,
+                    default=DEFAULT_RESET_DELAY
+                ): selector({
+                    "number": {
+                        "min": MIN_RESET_DELAY,
+                        "max": MAX_RESET_DELAY,
+                        "mode": "box",
+                        "unit_of_measurement": "seconds",
+                    }
+                }),
             }),
             errors=errors,
             description_placeholders={
@@ -119,7 +190,7 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         camera_name = camera[CONF_NAME]
 
         # Get base URL for webhook display
-        base_url = self.hass.config.api.base_url if self.hass.config.api else "http://homeassistant.local:8123"
+        base_url = _get_base_url(self.hass)
         webhook_url = f"{base_url}/api/webhook/{webhook_id}"
 
         return self.async_show_form(
@@ -152,39 +223,45 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Validate webhook ID format
             if not _validate_webhook_id(webhook_id):
                 errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
+            elif any(cam[CONF_NAME] == camera_name for cam in self._cameras):
+                errors[CONF_NAME] = "duplicate_name"
+            elif any(cam[CONF_WEBHOOK_ID] == webhook_id for cam in self._cameras):
+                # Check for duplicate in cameras being added in this flow
+                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
+            elif _check_duplicate_webhook_id(self.hass, webhook_id, exclude_cameras=self._cameras):
+                # Check against all existing config entries
+                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
             else:
-                # Check for duplicate in existing cameras
-                if any(cam[CONF_WEBHOOK_ID] == webhook_id for cam in self._cameras):
-                    errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-                elif any(cam[CONF_NAME] == camera_name for cam in self._cameras):
-                    errors[CONF_NAME] = "duplicate_name"
-                else:
-                    # Check against other config entries
-                    existing_entries = self._async_current_entries()
-                    for entry in existing_entries:
-                        for existing_camera in entry.data.get("cameras", []):
-                            if existing_camera.get(CONF_WEBHOOK_ID) == webhook_id:
-                                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-                                break
+                # Store camera data with UUID
+                self._cameras.append({
+                    CONF_CAMERA_ID: str(uuid.uuid4()),  # Generate permanent UUID
+                    CONF_NAME: camera_name,
+                    CONF_WEBHOOK_ID: webhook_id,
+                    CONF_RESET_DELAY: user_input.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY),
+                })
 
-                    if not errors:
-                        # Store camera data
-                        self._cameras.append({
-                            CONF_NAME: camera_name,
-                            CONF_WEBHOOK_ID: webhook_id,
-                        })
-
-                        # Show confirmation
-                        return await self.async_step_confirm()
+                # Show confirmation
+                return await self.async_step_confirm()
 
         # Get base URL for display
-        base_url = self.hass.config.api.base_url if self.hass.config.api else "http://homeassistant.local:8123"
+        base_url = _get_base_url(self.hass)
 
         return self.async_show_form(
             step_id="add_another",
             data_schema=vol.Schema({
                 vol.Required(CONF_NAME): cv.string,
                 vol.Optional(CONF_WEBHOOK_ID): cv.string,
+                vol.Required(
+                    CONF_RESET_DELAY,
+                    default=DEFAULT_RESET_DELAY
+                ): selector({
+                    "number": {
+                        "min": MIN_RESET_DELAY,
+                        "max": MAX_RESET_DELAY,
+                        "mode": "box",
+                        "unit_of_measurement": "seconds",
+                    }
+                }),
             }),
             errors=errors,
             description_placeholders={
@@ -207,253 +284,135 @@ class VigiOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        self._camera_to_edit: dict[str, Any] | None = None
-        self._camera_to_remove: dict[str, Any] | None = None
+        super().__init__()
+        self._camera_to_edit_idx: int | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["add_camera", "edit_camera", "remove_camera"],
-        )
-
-    async def async_step_add_camera(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Add a new camera."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            camera_name = user_input[CONF_NAME]
-            webhook_id = user_input.get(CONF_WEBHOOK_ID)
-
-            # Auto-generate webhook ID if not provided
-            if not webhook_id:
-                webhook_id = _generate_webhook_id(camera_name)
-
-            # Validate webhook ID format
-            if not _validate_webhook_id(webhook_id):
-                errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
-            else:
-                # Check for duplicates in current entry
-                cameras = self.config_entry.data.get("cameras", [])
-                if any(cam[CONF_WEBHOOK_ID] == webhook_id for cam in cameras):
-                    errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-                elif any(cam[CONF_NAME] == camera_name for cam in cameras):
-                    errors[CONF_NAME] = "duplicate_name"
-                else:
-                    # Check against other entries
-                    for entry in self.hass.config_entries.async_entries(DOMAIN):
-                        if entry.entry_id == self.config_entry.entry_id:
-                            continue
-                        for existing_camera in entry.data.get("cameras", []):
-                            if existing_camera.get(CONF_WEBHOOK_ID) == webhook_id:
-                                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-                                break
-
-                    if not errors:
-                        # Add camera to config entry
-                        new_camera = {
-                            CONF_NAME: camera_name,
-                            CONF_WEBHOOK_ID: webhook_id,
-                        }
-                        new_cameras = cameras + [new_camera]
-
-                        # Update config entry
-                        self.hass.config_entries.async_update_entry(
-                            self.config_entry,
-                            data={"cameras": new_cameras},
-                        )
-
-                        # Reload the integration to create new entities
-                        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-
-                        return self.async_create_entry(title="", data={})
-
-        # Get base URL for display
-        base_url = self.hass.config.api.base_url if self.hass.config.api else "http://homeassistant.local:8123"
-
-        return self.async_show_form(
-            step_id="add_camera",
-            data_schema=vol.Schema({
-                vol.Required(CONF_NAME): cv.string,
-                vol.Optional(CONF_WEBHOOK_ID): cv.string,
-            }),
-            errors=errors,
-            description_placeholders={
-                "base_url": base_url,
-            },
-        )
-
-    async def async_step_edit_camera(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Edit an existing camera."""
+        """Select camera to edit settings."""
         cameras = self.config_entry.data.get("cameras", [])
 
         if not cameras:
             return self.async_abort(reason="no_cameras")
 
-        if self._camera_to_edit is None:
-            # Show camera selection
-            return self.async_show_form(
-                step_id="edit_camera",
-                data_schema=vol.Schema({
-                    vol.Required("camera_select"): vol.In({
-                        cam[CONF_WEBHOOK_ID]: f"{cam[CONF_NAME]} ({cam[CONF_WEBHOOK_ID]})"
-                        for cam in cameras
-                    }),
+        # Single camera: skip selection and go straight to edit
+        if len(cameras) == 1:
+            self._camera_to_edit_idx = 0
+            return await self.async_step_edit_camera_form()
+
+        # User selected a camera
+        if user_input is not None:
+            self._camera_to_edit_idx = user_input["camera_select"]
+            return await self.async_step_edit_camera_form()
+
+        # Show camera selection
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required("camera_select"): vol.In({
+                    idx: f"{cam[CONF_NAME]} ({cam[CONF_WEBHOOK_ID]})"
+                    for idx, cam in enumerate(cameras)
                 }),
-            )
-
-        if user_input is not None and "camera_select" in user_input:
-            # Camera selected, show edit form
-            webhook_id = user_input["camera_select"]
-            self._camera_to_edit = next(
-                cam for cam in cameras if cam[CONF_WEBHOOK_ID] == webhook_id
-            )
-
-            return self.async_show_form(
-                step_id="edit_camera_form",
-                data_schema=vol.Schema({
-                    vol.Required(CONF_NAME, default=self._camera_to_edit[CONF_NAME]): cv.string,
-                    vol.Required(CONF_WEBHOOK_ID, default=self._camera_to_edit[CONF_WEBHOOK_ID]): cv.string,
-                }),
-                description_placeholders={
-                    "old_webhook_id": self._camera_to_edit[CONF_WEBHOOK_ID],
-                },
-            )
-
-        return self.async_abort(reason="unknown_error")
+            }),
+        )
 
     async def async_step_edit_camera_form(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the edit camera form."""
+        """Edit camera settings form."""
         errors: dict[str, str] = {}
+        cameras = self.config_entry.data.get("cameras", [])
+        camera = cameras[self._camera_to_edit_idx]
 
         if user_input is not None:
-            new_name = user_input[CONF_NAME]
             new_webhook_id = user_input[CONF_WEBHOOK_ID]
+            new_reset_delay = user_input[CONF_RESET_DELAY]
 
             # Validate webhook ID format
             if not _validate_webhook_id(new_webhook_id):
                 errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
-            else:
-                # Check for duplicates (excluding the camera being edited)
-                cameras = self.config_entry.data.get("cameras", [])
-                for cam in cameras:
-                    if cam[CONF_WEBHOOK_ID] == self._camera_to_edit[CONF_WEBHOOK_ID]:
-                        continue  # Skip the camera being edited
+
+            # Validate reset delay range
+            if not (MIN_RESET_DELAY <= new_reset_delay <= MAX_RESET_DELAY):
+                errors[CONF_RESET_DELAY] = "invalid_reset_delay"
+
+            if not errors:
+                # Check for duplicate webhook IDs (excluding current camera)
+                # First check within same entry
+                for idx, cam in enumerate(cameras):
+                    if idx == self._camera_to_edit_idx:
+                        continue
                     if cam[CONF_WEBHOOK_ID] == new_webhook_id:
                         errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-                    elif cam[CONF_NAME] == new_name:
-                        errors[CONF_NAME] = "duplicate_name"
+                        break
 
+                # Check against other config entries (CRITICAL FIX)
                 if not errors:
-                    # Update the camera
-                    updated_cameras = []
-                    for cam in cameras:
-                        if cam[CONF_WEBHOOK_ID] == self._camera_to_edit[CONF_WEBHOOK_ID]:
-                            updated_cameras.append({
-                                CONF_NAME: new_name,
-                                CONF_WEBHOOK_ID: new_webhook_id,
-                            })
-                        else:
-                            updated_cameras.append(cam)
+                    if _check_duplicate_webhook_id(
+                        self.hass,
+                        new_webhook_id,
+                        exclude_entry_id=self.config_entry.entry_id,
+                    ):
+                        errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
 
-                    # Update config entry
-                    self.hass.config_entries.async_update_entry(
-                        self.config_entry,
-                        data={"cameras": updated_cameras},
-                    )
+            if not errors:
+                # CRITICAL: Get old webhook_id BEFORE updating config
+                old_webhook_id = camera[CONF_WEBHOOK_ID]
 
-                    # Reload the integration
-                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                # Update camera (preserve existing name and camera_id)
+                cameras[self._camera_to_edit_idx][CONF_WEBHOOK_ID] = new_webhook_id
+                cameras[self._camera_to_edit_idx][CONF_RESET_DELAY] = new_reset_delay
+                # Note: camera_id is NOT updated - it remains stable
 
-                    return self.async_create_entry(title="", data={})
-
-        return self.async_show_form(
-            step_id="edit_camera_form",
-            data_schema=vol.Schema({
-                vol.Required(CONF_NAME, default=self._camera_to_edit[CONF_NAME]): cv.string,
-                vol.Required(CONF_WEBHOOK_ID, default=self._camera_to_edit[CONF_WEBHOOK_ID]): cv.string,
-            }),
-            errors=errors,
-            description_placeholders={
-                "old_webhook_id": self._camera_to_edit[CONF_WEBHOOK_ID],
-            },
-        )
-
-    async def async_step_remove_camera(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Remove a camera."""
-        cameras = self.config_entry.data.get("cameras", [])
-
-        if not cameras:
-            return self.async_abort(reason="no_cameras")
-
-        if self._camera_to_remove is None:
-            # Show camera selection
-            return self.async_show_form(
-                step_id="remove_camera",
-                data_schema=vol.Schema({
-                    vol.Required("camera_select"): vol.In({
-                        cam[CONF_WEBHOOK_ID]: f"{cam[CONF_NAME]} ({cam[CONF_WEBHOOK_ID]})"
-                        for cam in cameras
-                    }),
-                }),
-            )
-
-        if user_input is not None and "camera_select" in user_input:
-            # Camera selected, show confirmation
-            webhook_id = user_input["camera_select"]
-            self._camera_to_remove = next(
-                cam for cam in cameras if cam[CONF_WEBHOOK_ID] == webhook_id
-            )
-
-            return self.async_show_form(
-                step_id="remove_camera_confirm",
-                data_schema=vol.Schema({
-                    vol.Required("confirm", default=False): bool,
-                }),
-                description_placeholders={
-                    "camera_name": self._camera_to_remove[CONF_NAME],
-                    "webhook_id": self._camera_to_remove[CONF_WEBHOOK_ID],
-                },
-            )
-
-        return self.async_abort(reason="unknown_error")
-
-    async def async_step_remove_camera_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Confirm camera removal."""
-        if user_input is not None:
-            if user_input.get("confirm"):
-                # Remove the camera
-                cameras = self.config_entry.data.get("cameras", [])
-                updated_cameras = [
-                    cam for cam in cameras
-                    if cam[CONF_WEBHOOK_ID] != self._camera_to_remove[CONF_WEBHOOK_ID]
-                ]
+                # Unregister old webhook BEFORE updating entry and reloading
+                if old_webhook_id != new_webhook_id:
+                    try:
+                        webhook_unregister(self.hass, old_webhook_id)
+                        _LOGGER.info(
+                            "Unregistered old webhook /api/webhook/%s before updating to %s",
+                            old_webhook_id,
+                            new_webhook_id,
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        _LOGGER.debug(
+                            "Failed to unregister old webhook %s: %s (may not exist)",
+                            old_webhook_id,
+                            e,
+                        )
 
                 # Update config entry
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    data={"cameras": updated_cameras},
+                    data={"cameras": cameras},
                 )
 
-                # Reload the integration
-                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                # Reload integration
+                await self.hass.config_entries.async_reload(
+                    self.config_entry.entry_id
+                )
 
                 return self.async_create_entry(title="", data={})
 
-            # User didn't confirm, go back to init
-            return await self.async_step_init()
-
-        return self.async_abort(reason="unknown_error")
+        # Show form with current values
+        return self.async_show_form(
+            step_id="edit_camera_form",
+            data_schema=vol.Schema({
+                vol.Required(CONF_WEBHOOK_ID, default=camera[CONF_WEBHOOK_ID]): cv.string,
+                vol.Required(
+                    CONF_RESET_DELAY,
+                    default=camera.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY)
+                ): selector({
+                    "number": {
+                        "min": MIN_RESET_DELAY,
+                        "max": MAX_RESET_DELAY,
+                        "mode": "box",
+                        "unit_of_measurement": "seconds",
+                    }
+                }),
+            }),
+            errors=errors,
+            description_placeholders={
+                "old_webhook_id": camera[CONF_WEBHOOK_ID],
+            },
+        )
