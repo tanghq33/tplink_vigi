@@ -1,0 +1,30 @@
+custom_components/tplink_vigi/config_flow.py:57: error: Returning Any from
+function declared to return "str"  [no-any-return]
+            return get_url(hass)
+            ^~~~~~~~~~~~~~~~~~~~
+custom_components/tplink_vigi/config_flow.py:97: error: Unexpected keyword
+argument "domain" for "__init_subclass__" of "object"  [call-arg]
+    class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    ^
+custom_components/tplink_vigi/config_flow.py:97: error: Class cannot subclass
+"ConfigFlow" (has type "Any")  [misc]
+    class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~
+custom_components/tplink_vigi/config_flow.py:212: error: Class cannot subclass
+"OptionsFlow" (has type "Any")  [misc]
+    class VigiOptionsFlow(config_entries.OptionsFlow):
+                          ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/tanghaoquan/Library/Python/3.9/lib/python/site-packages/mypy/typeshed/stdlib/builtins.pyi:138: note: "__init_subclass__" of "object" defined here
+custom_components/tplink_vigi/__init__.py:64: error: Returning Any from
+function declared to return "bool"  [no-any-return]
+        return unload_ok
+        ^~~~~~~~~~~~~~~~
+custom_components/tplink_vigi/binary_sensor.py:134: error: Class cannot
+subclass "BinarySensorEntity" (has type "Any")  [misc]
+    class VigiCameraBinarySensor(BinarySensorEntity):
+                                 ^~~~~~~~~~~~~~~~~~
+custom_components/tplink_vigi/binary_sensor.py:160: error: Missing type
+parameters for generic type "Task"  [type-arg]
+            self._reset_task: asyncio.Task | None = None
+                              ^
+Found 7 errors in 3 files (checked 4 source files)
