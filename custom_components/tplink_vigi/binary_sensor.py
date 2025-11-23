@@ -74,6 +74,9 @@ async def async_setup_entry(
             "is_on": False,
             "last_event": None,
             "last_event_time": None,
+            "last_image": None,
+            "last_image_time": None,
+            "last_image_size": None,
         }
 
         # Create binary sensor entity
@@ -157,7 +160,7 @@ class VigiCameraBinarySensor(BinarySensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_{camera_id}_motion"
         self._attr_is_on = False
         self._attributes: dict[str, Any] = {}
-        self._reset_task: asyncio.Task | None = None
+        self._reset_task: asyncio.Task[None] | None = None
 
     @property
     def is_on(self) -> bool:
@@ -190,14 +193,131 @@ class VigiCameraBinarySensor(BinarySensorEntity):
     ) -> None:
         """Handle incoming webhook data from camera."""
         try:
-            data: dict[str, Any] = await request.json()
+            content_type = request.headers.get("Content-Type", "")
+            event_data: dict[str, Any] | None = None
+            image_bytes: bytes | None = None
+            image_content_type: str = "image/jpeg"
 
-            _LOGGER.debug("Received webhook data for %s: %s", self._attr_name, data)
+            # Detect Content-Type and parse accordingly (FR-009, FR-010)
+            if "multipart/form-data" in content_type:
+                # Parse multipart form data
+                _LOGGER.debug(
+                    "Received multipart webhook for %s (camera_id: %s, webhook_id: %s)",
+                    self._attr_name,
+                    self._camera_id,
+                    webhook_id,
+                )
 
-            device_name: str = data.get("device_name", "Unknown")
-            ip: str = data.get("ip", "Unknown")
-            mac: str = data.get("mac", "Unknown")
-            event_list: list[dict[str, Any]] = data.get("event_list", [])
+                try:
+                    reader = await request.multipart()
+
+                    async for part in reader:
+                        part_name = part.name
+
+                        # Check if this is the event data part (JSON)
+                        # Camera sends field named "event" for JSON data
+                        if part_name == "event":
+                            # Extract JSON metadata
+                            try:
+                                part_bytes = await part.read()
+                                # Decode bytearray to string and parse JSON
+                                event_data = await part.json() if hasattr(part, 'json') else None
+                                if event_data is None:
+                                    import json
+                                    event_data = json.loads(part_bytes.decode('utf-8'))
+
+                                _LOGGER.debug(
+                                    "Extracted JSON data from multipart field '%s' for %s",
+                                    part_name,
+                                    self._attr_name,
+                                )
+                            except (ValueError, UnicodeDecodeError) as e:
+                                # FR-022: Malformed JSON in event part
+                                _LOGGER.warning(
+                                    "Malformed JSON in multipart 'event' part for camera %s "
+                                    "(camera_id: %s): %s. Cannot process event.",
+                                    self._attr_name,
+                                    self._camera_id,
+                                    str(e),
+                                )
+                        else:
+                            # Any other field is treated as image data
+                            # Camera sends field named with datetime (e.g., "20251123180936")
+                            try:
+                                image_bytes = await part.read()
+                                image_content_type = part.headers.get("Content-Type", "image/jpeg")
+
+                                # FR-023: Warn if image size exceeds 5MB
+                                if len(image_bytes) > 5 * 1024 * 1024:
+                                    _LOGGER.warning(
+                                        "Image size (%d bytes) exceeds recommended limit (5MB) "
+                                        "for camera %s (camera_id: %s). Processing may be slower.",
+                                        len(image_bytes),
+                                        self._attr_name,
+                                        self._camera_id,
+                                    )
+
+                                _LOGGER.debug(
+                                    "Extracted image from multipart field '%s' for %s: %d bytes (%s)",
+                                    part_name,
+                                    self._attr_name,
+                                    len(image_bytes),
+                                    image_content_type,
+                                )
+                            except asyncio.TimeoutError:
+                                # FR-021: Network interruption during image transmission
+                                _LOGGER.warning(
+                                    "Network timeout while receiving image for camera %s "
+                                    "(camera_id: %s, webhook_id: %s). "
+                                    "Motion event will be processed without image.",
+                                    self._attr_name,
+                                    self._camera_id,
+                                    webhook_id,
+                                )
+
+                except ValueError as e:
+                    # FR-022: Malformed multipart structure
+                    _LOGGER.warning(
+                        "Malformed multipart data for camera %s (camera_id: %s, webhook_id: %s): %s. "
+                        "Attempting to process available parts.",
+                        self._attr_name,
+                        self._camera_id,
+                        webhook_id,
+                        str(e),
+                    )
+
+            else:
+                # Parse JSON body (no image)
+                try:
+                    event_data = await request.json()
+                    _LOGGER.debug(
+                        "Received JSON webhook for %s (camera_id: %s, webhook_id: %s)",
+                        self._attr_name,
+                        self._camera_id,
+                        webhook_id,
+                    )
+                except ValueError as e:
+                    # FR-022: Malformed JSON body
+                    _LOGGER.warning(
+                        "Malformed JSON in webhook body for camera %s (camera_id: %s): %s. "
+                        "Cannot process event.",
+                        self._attr_name,
+                        self._camera_id,
+                        str(e),
+                    )
+
+            # Process event data if available
+            if not event_data:
+                _LOGGER.warning(
+                    "No event data found in webhook for %s. Cannot process.",
+                    self._attr_name,
+                )
+                return
+
+            device_name: str = event_data.get("device_name", "Unknown")
+            ip: str = event_data.get("ip", "Unknown")
+            mac: str = event_data.get("mac", "Unknown")
+            event_list: list[dict[str, Any]] = event_data.get("event_list", [])
 
             if event_list:
                 latest_event = event_list[0]
@@ -239,6 +359,16 @@ class VigiCameraBinarySensor(BinarySensorEntity):
                     camera_data["is_on"] = True
                     camera_data["last_event"] = event_types
                     camera_data["last_event_time"] = event_time
+
+                    # Store image data if received
+                    if image_bytes:
+                        camera_data["last_image"] = image_bytes
+                        camera_data["last_image_time"] = dt_util.now()
+                        camera_data["last_image_size"] = len(image_bytes)
+
+                        # Update image entity if it exists
+                        self._update_image_entity(hass, image_bytes, image_content_type)
+
                 except KeyError:
                     _LOGGER.warning(
                         "Camera data not found for %s (camera_id: %s). "
@@ -251,10 +381,11 @@ class VigiCameraBinarySensor(BinarySensorEntity):
                 self.async_write_ha_state()
 
                 _LOGGER.info(
-                    "Event detected on %s: %s at %s",
+                    "Event detected on %s: %s at %s%s",
                     self._attr_name,
                     event_type_str,
                     event_time,
+                    " (with image)" if image_bytes else "",
                 )
 
                 # Cancel any existing reset task
@@ -264,10 +395,42 @@ class VigiCameraBinarySensor(BinarySensorEntity):
                 # Schedule reset to off after delay
                 self._reset_task = asyncio.create_task(self._reset_to_off())
 
-        except Exception as e:  # noqa: BLE001
-            _LOGGER.error(
-                "Error processing webhook for %s: %s", self._attr_name, e, exc_info=True
+        except KeyError as e:
+            # Missing required field in webhook data
+            _LOGGER.warning(
+                "Missing required field '%s' in webhook data for camera %s "
+                "(camera_id: %s, webhook_id: %s). Motion event cannot be processed.",
+                str(e),
+                self._attr_name,
+                self._camera_id,
+                webhook_id,
             )
+        except Exception as e:
+            # Unexpected error - log with full context
+            _LOGGER.error(
+                "Unexpected error processing webhook for camera %s "
+                "(camera_id: %s, webhook_id: %s): %s",
+                self._attr_name,
+                self._camera_id,
+                webhook_id,
+                str(e),
+                exc_info=True,
+            )
+
+    def _update_image_entity(
+        self,
+        hass: HomeAssistant,
+        image_bytes: bytes,
+        content_type: str,
+    ) -> None:
+        """Update the associated image entity with new image bytes."""
+        # Store image data in hass.data so image entity can retrieve it
+        # Image entity will read from camera_data["last_image"] in its async_image() method
+        _LOGGER.debug(
+            "Stored %d bytes of image data for %s (accessible to image entity)",
+            len(image_bytes),
+            self._attr_name,
+        )
 
     async def _reset_to_off(self) -> None:
         """Reset binary sensor to off state after delay."""

@@ -3,10 +3,9 @@
     "step": {
       "user": {
         "title": "Add TP-Link VIGI Camera",
-        "description": "Configure your first VIGI camera. The camera will send webhook notifications to Home Assistant.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
+        "description": "Configure your VIGI camera. A unique webhook URL will be auto-generated.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
         "data": {
-          "name": "Device Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)",
+          "name": "Camera Name",
           "reset_delay": "Auto-reset delay (seconds)"
         }
       },
@@ -36,10 +35,9 @@
         }
       },
       "edit_camera_form": {
-        "title": "Edit Camera Settings",
-        "description": "**Warning:** Changing the webhook ID will change the webhook URL. You'll need to update your camera configuration.\n\nTo rename the camera, use Home Assistant's device settings.\n\nOld webhook ID: `{old_webhook_id}`",
+        "title": "Edit {camera_name} Settings",
+        "description": "**Webhook URL (read-only):**\n`{webhook_url}`\n\n**Webhook ID:** `{webhook_id}`\n\nTo rename the camera, use Home Assistant's device settings.",
         "data": {
-          "webhook_id": "Webhook ID",
           "reset_delay": "Auto-reset delay (seconds)"
         }
       }
