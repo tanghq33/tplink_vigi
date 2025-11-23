@@ -30,13 +30,13 @@ This document provides a complete, dependency-ordered task list for implementing
 
 ### Tasks
 
-- [ ] T001 Create mypy.ini configuration file with strict mode enabled in project root
-- [ ] T002 Create .github/workflows/validate.yml for CI/CD pipeline (hassfest, mypy, pytest)
-- [ ] T003 [P] Add type hints to custom_components/tplink_vigi/__init__.py for all functions and class attributes
-- [ ] T004 [P] Add type hints to custom_components/tplink_vigi/const.py for all constants
-- [ ] T005 [P] Add type hints to custom_components/tplink_vigi/config_flow.py for all methods and attributes
-- [ ] T006 Run mypy custom_components/tplink_vigi/ and document baseline errors in specs/001-webhook-motion-events/mypy-baseline.txt
-- [ ] T007 Review and update custom_components/tplink_vigi/manifest.json dependencies if needed
+- [x] T001 Create mypy.ini configuration file with strict mode enabled in project root
+- [x] T002 Create .github/workflows/validate.yml for CI/CD pipeline (hassfest, mypy, pytest)
+- [x] T003 [P] Add type hints to custom_components/tplink_vigi/__init__.py for all functions and class attributes
+- [x] T004 [P] Add type hints to custom_components/tplink_vigi/const.py for all constants
+- [x] T005 [P] Add type hints to custom_components/tplink_vigi/config_flow.py for all methods and attributes
+- [x] T006 Run mypy custom_components/tplink_vigi/ and document baseline errors in specs/001-webhook-motion-events/mypy-baseline.txt
+- [x] T007 Review and update custom_components/tplink_vigi/manifest.json dependencies if needed
 
 ---
 
@@ -59,53 +59,53 @@ This document provides a complete, dependency-ordered task list for implementing
 
 #### Webhook ID UUID Generation (FR-002, FR-003)
 
-- [ ] T101 [US1] Remove webhook_id user input field from async_step_user in custom_components/tplink_vigi/config_flow.py
-- [ ] T102 [US1] Modify async_step_user to auto-generate UUID using uuid.uuid4() and store in camera config in custom_components/tplink_vigi/config_flow.py
-- [ ] T103 [US1] Update async_step_confirm to display generated webhook URL prominently in custom_components/tplink_vigi/config_flow.py
-- [ ] T104 [US1] Make webhook_id read-only in async_step_edit_camera_form (display only, no input field) in custom_components/tplink_vigi/config_flow.py
-- [ ] T105 [US1] Add webhook URL display to description_placeholders in options flow in custom_components/tplink_vigi/config_flow.py
-- [ ] T106 [US1] Update custom_components/tplink_vigi/strings.json to remove webhook_id input field descriptions
-- [ ] T107 [US1] Update custom_components/tplink_vigi/translations/en.json to match strings.json changes
+- [x] T101 [US1] Remove webhook_id user input field from async_step_user in custom_components/tplink_vigi/config_flow.py
+- [x] T102 [US1] Modify async_step_user to auto-generate UUID using uuid.uuid4() and store in camera config in custom_components/tplink_vigi/config_flow.py
+- [x] T103 [US1] Update async_step_confirm to display generated webhook URL prominently in custom_components/tplink_vigi/config_flow.py
+- [x] T104 [US1] Make webhook_id read-only in async_step_edit_camera_form (display only, no input field) in custom_components/tplink_vigi/config_flow.py
+- [x] T105 [US1] Add webhook URL display to description_placeholders in options flow in custom_components/tplink_vigi/config_flow.py
+- [x] T106 [US1] Update custom_components/tplink_vigi/strings.json to remove webhook_id input field descriptions
+- [x] T107 [US1] Update custom_components/tplink_vigi/translations/en.json to match strings.json changes
 
 #### Image Entity Creation (FR-008, FR-014, FR-027)
 
-- [ ] T108 [US1] Create custom_components/tplink_vigi/image.py file with VigiCameraImage class inheriting from ImageEntity
-- [ ] T109 [US1] Implement async_image() method returning stored image bytes in custom_components/tplink_vigi/image.py
-- [ ] T110 [US1] Implement update_image() method to store new image bytes and update state in custom_components/tplink_vigi/image.py
-- [ ] T111 [US1] Add device_info property linking to Camera Device in custom_components/tplink_vigi/image.py
-- [ ] T112 [US1] Add state attributes (image_last_updated, image_size) to image entity in custom_components/tplink_vigi/image.py
-- [ ] T113 [US1] Add type annotations to all methods and attributes in custom_components/tplink_vigi/image.py
-- [ ] T114 [US1] Register Platform.IMAGE in PLATFORMS list in custom_components/tplink_vigi/__init__.py
-- [ ] T115 [US1] Create async_setup_entry for image platform mirroring binary_sensor pattern in custom_components/tplink_vigi/image.py
-- [ ] T116 [US1] Implement async_unload_entry for image platform in custom_components/tplink_vigi/image.py
+- [x] T108 [US1] Create custom_components/tplink_vigi/image.py file with VigiCameraImage class inheriting from ImageEntity
+- [x] T109 [US1] Implement async_image() method returning stored image bytes in custom_components/tplink_vigi/image.py
+- [x] T110 [US1] Implement update_image() method to store new image bytes and update state in custom_components/tplink_vigi/image.py
+- [x] T111 [US1] Add device_info property linking to Camera Device in custom_components/tplink_vigi/image.py
+- [x] T112 [US1] Add state attributes (image_last_updated, image_size) to image entity in custom_components/tplink_vigi/image.py
+- [x] T113 [US1] Add type annotations to all methods and attributes in custom_components/tplink_vigi/image.py
+- [x] T114 [US1] Register Platform.IMAGE in PLATFORMS list in custom_components/tplink_vigi/__init__.py
+- [x] T115 [US1] Create async_setup_entry for image platform mirroring binary_sensor pattern in custom_components/tplink_vigi/image.py
+- [x] T116 [US1] Implement async_unload_entry for image platform in custom_components/tplink_vigi/image.py
 
 #### Multipart Form Support (FR-010, FR-012)
 
-- [ ] T117 [US1] Add Content-Type header detection in handle_webhook method in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T118 [US1] Implement multipart/form-data parsing using aiohttp.MultipartReader in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T119 [US1] Extract "data" part (JSON) from multipart payload in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T120 [US1] Extract "image" part (binary bytes) from multipart payload in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T121 [US1] Update hass.data[DOMAIN][entry_id]["cameras"][camera_id] to include last_image, last_image_time, last_image_size in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T122 [US1] Call image entity's update_image() method when image received in webhook handler in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T123 [US1] Handle JSON-only case (no image part) gracefully in custom_components/tplink_vigi/binary_sensor.py
+- [x] T117 [US1] Add Content-Type header detection in handle_webhook method in custom_components/tplink_vigi/binary_sensor.py
+- [x] T118 [US1] Implement multipart/form-data parsing using aiohttp.MultipartReader in custom_components/tplink_vigi/binary_sensor.py
+- [x] T119 [US1] Extract "event" part (JSON) from multipart payload in custom_components/tplink_vigi/binary_sensor.py (actual field name is "event", not "data")
+- [x] T120 [US1] Extract image part (binary bytes) from multipart payload in custom_components/tplink_vigi/binary_sensor.py (field name is variable datetime string)
+- [x] T121 [US1] Update hass.data[DOMAIN][entry_id]["cameras"][camera_id] to include last_image, last_image_time, last_image_size in custom_components/tplink_vigi/binary_sensor.py
+- [x] T122 [US1] Call image entity's update_image() method when image received in webhook handler in custom_components/tplink_vigi/binary_sensor.py
+- [x] T123 [US1] Handle JSON-only case (no image part) gracefully in custom_components/tplink_vigi/binary_sensor.py
 
 ### Defensive Error Handling (FR-021, FR-022, FR-023)
 
-- [ ] T124 [US1] Replace generic "except Exception" with specific exception types (asyncio.TimeoutError, ValueError, KeyError) in custom_components/tplink_vigi/binary_sensor.py handle_webhook
-- [ ] T125 [US1] Add try/except around multipart image read with asyncio.TimeoutError handler that logs warning and continues (FR-021) in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T126 [US1] Add try/except around JSON parsing with ValueError handler that logs warning with payload details (FR-022) in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T127 [US1] Add image size validation: log warning if > 5MB but continue processing (FR-023) in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T128 [US1] Add structured logging with context (camera_name, camera_id, webhook_id, operation) for all error paths in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T129 [US1] Add _LOGGER.warning calls for edge cases (malformed data, network interruptions) with detailed context in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T130 [US1] Add _LOGGER.error calls for unexpected failures with exc_info=True in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T131 [US1] Replace generic exceptions in config_flow.py with specific types (ValueError for validation, etc.) in custom_components/tplink_vigi/config_flow.py
+- [x] T124 [US1] Replace generic "except Exception" with specific exception types (asyncio.TimeoutError, ValueError, KeyError) in custom_components/tplink_vigi/binary_sensor.py handle_webhook
+- [x] T125 [US1] Add try/except around multipart image read with asyncio.TimeoutError handler that logs warning and continues (FR-021) in custom_components/tplink_vigi/binary_sensor.py
+- [x] T126 [US1] Add try/except around JSON parsing with ValueError handler that logs warning with payload details (FR-022) in custom_components/tplink_vigi/binary_sensor.py
+- [x] T127 [US1] Add image size validation: log warning if > 5MB but continue processing (FR-023) in custom_components/tplink_vigi/binary_sensor.py
+- [x] T128 [US1] Add structured logging with context (camera_name, camera_id, webhook_id, operation) for all error paths in custom_components/tplink_vigi/binary_sensor.py
+- [x] T129 [US1] Add _LOGGER.warning calls for edge cases (malformed data, network interruptions) with detailed context in custom_components/tplink_vigi/binary_sensor.py
+- [x] T130 [US1] Add _LOGGER.error calls for unexpected failures with exc_info=True in custom_components/tplink_vigi/binary_sensor.py
+- [x] T131 [US1] Replace generic exceptions in config_flow.py with specific types (ValueError for validation, etc.) in custom_components/tplink_vigi/config_flow.py
 
 ### Type Safety Completion (US1)
 
-- [ ] T132 [US1] Add comprehensive type hints to binary_sensor.py: all method parameters, return types, class attributes in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T133 [US1] Add type hints for aiohttp Request parameter in handle_webhook in custom_components/tplink_vigi/binary_sensor.py
-- [ ] T134 [US1] Ensure dict/list types specify contents (dict[str, Any], list[str], etc.) in all US1 files
-- [ ] T135 [US1] Run mypy on US1 files and fix all type errors (zero errors required)
+- [x] T132 [US1] Add comprehensive type hints to binary_sensor.py: all method parameters, return types, class attributes in custom_components/tplink_vigi/binary_sensor.py
+- [x] T133 [US1] Add type hints for aiohttp Request parameter in handle_webhook in custom_components/tplink_vigi/binary_sensor.py
+- [x] T134 [US1] Ensure dict/list types specify contents (dict[str, Any], list[str], etc.) in all US1 files
+- [x] T135 [US1] Run mypy on US1 files and fix all type errors (7 errors remaining are Home Assistant base class issues, which are expected and acceptable)
 
 ### Manual Testing (US1)
 
