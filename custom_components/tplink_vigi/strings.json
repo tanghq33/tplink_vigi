@@ -3,32 +3,18 @@
     "step": {
       "user": {
         "title": "Add TP-Link VIGI Camera",
-        "description": "Configure your first VIGI camera. The camera will send webhook notifications to Home Assistant.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
+        "description": "Configure your VIGI camera. A unique webhook URL will be auto-generated.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
         "data": {
           "name": "Camera Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)",
           "reset_delay": "Auto-reset delay (seconds)"
         }
       },
       "confirm": {
         "title": "Camera Added: {camera_name}",
-        "description": "Configure your camera to send events to this webhook URL:\n\n**`{webhook_url}`**\n\nWebhook ID: `{webhook_id}`\n\nWould you like to add another camera?",
-        "data": {
-          "add_another": "Add another camera"
-        }
-      },
-      "add_another": {
-        "title": "Add Another Camera",
-        "description": "Add camera #{camera_count} to your TP-Link VIGI integration.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
-        "data": {
-          "name": "Camera Name",
-          "webhook_id": "Webhook ID (optional, auto-generated from name)",
-          "reset_delay": "Auto-reset delay (seconds)"
-        }
+        "description": "Configure your camera to send events to this webhook URL:\n\n**`{webhook_url}`**\n\nWebhook ID: `{webhook_id}`"
       }
     },
     "error": {
-      "duplicate_name": "A camera with this name already exists",
       "duplicate_webhook": "This webhook ID is already in use",
       "invalid_webhook_id": "Webhook ID can only contain lowercase letters, numbers, and underscores",
       "invalid_reset_delay": "Reset delay must be between 1 and 60 seconds"
@@ -49,10 +35,9 @@
         }
       },
       "edit_camera_form": {
-        "title": "Edit Camera Settings",
-        "description": "**Warning:** Changing the webhook ID will change the webhook URL. You'll need to update your camera configuration.\n\nTo rename the camera, use Home Assistant's device settings.\n\nOld webhook ID: `{old_webhook_id}`",
+        "title": "Edit {camera_name} Settings",
+        "description": "**Webhook URL (read-only):**\n`{webhook_url}`\n\n**Webhook ID:** `{webhook_id}`\n\nTo rename the camera, use Home Assistant's device settings.",
         "data": {
-          "webhook_id": "Webhook ID",
           "reset_delay": "Auto-reset delay (seconds)"
         }
       }

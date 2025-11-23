@@ -1,0 +1,45 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate Integration
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install homeassistant
+          pip install mypy
+          pip install pytest
+          pip install pytest-homeassistant-custom-component
+          pip install aiohttp
+
+      - name: Run hassfest
+        run: |
+          python -m homeassistant.scripts.hassfest --action validate --integration-path custom_components/tplink_vigi
+
+      - name: Run mypy type checker
+        run: |
+          mypy custom_components/tplink_vigi --config-file mypy.ini
+
+      - name: Run pytest
+        run: |
+          pytest tests/ --cov=custom_components.tplink_vigi --cov-report=term-missing

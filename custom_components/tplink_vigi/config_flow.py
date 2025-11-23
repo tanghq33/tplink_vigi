@@ -55,7 +55,8 @@ def _get_base_url(hass: HomeAssistant) -> str:
     """Get base URL for webhook display."""
     try:
         return get_url(hass)
-    except Exception:  # noqa: BLE001
+    except (ValueError, KeyError):
+        # URL not configured or invalid
         return "http://homeassistant.local:8123"
 
 
@@ -112,35 +113,35 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Get camera name and webhook ID
+            # Get camera name
             camera_name = user_input[CONF_NAME]
-            webhook_id = user_input.get(CONF_WEBHOOK_ID)
 
-            # Auto-generate webhook ID if not provided
-            if not webhook_id:
-                webhook_id = _generate_webhook_id(camera_name)
+            # Auto-generate webhook ID as UUID (FR-002, FR-003)
+            webhook_id = str(uuid.uuid4())
 
-            # Validate webhook ID format
-            if not _validate_webhook_id(webhook_id):
-                errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
-            elif _check_duplicate_webhook_id(self.hass, webhook_id, exclude_cameras=self._cameras):
-                # Check for duplicate webhook ID across all entries
-                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-            else:
-                # Set unique ID for this config entry
-                await self.async_set_unique_id(webhook_id)
-                self._abort_if_unique_id_configured()
+            # Check for duplicate webhook ID across all entries (should be extremely rare with UUID)
+            if _check_duplicate_webhook_id(self.hass, webhook_id, exclude_cameras=self._cameras):
+                # This should never happen with UUIDs, but handle it anyway
+                _LOGGER.warning(
+                    "Generated duplicate webhook UUID %s (extremely rare). Regenerating.",
+                    webhook_id,
+                )
+                webhook_id = str(uuid.uuid4())
 
-                # Store camera data temporarily with UUID
-                self._cameras.append({
-                    CONF_CAMERA_ID: str(uuid.uuid4()),  # Generate permanent UUID
-                    CONF_NAME: camera_name,
-                    CONF_WEBHOOK_ID: webhook_id,
-                    CONF_RESET_DELAY: user_input.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY),
-                })
+            # Set unique ID for this config entry
+            await self.async_set_unique_id(webhook_id)
+            self._abort_if_unique_id_configured()
 
-                # Show confirmation with webhook URL
-                return await self.async_step_confirm()
+            # Store camera data temporarily with UUID
+            self._cameras.append({
+                CONF_CAMERA_ID: str(uuid.uuid4()),  # Generate permanent UUID
+                CONF_NAME: camera_name,
+                CONF_WEBHOOK_ID: webhook_id,
+                CONF_RESET_DELAY: user_input.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY),
+            })
+
+            # Show confirmation with webhook URL
+            return await self.async_step_confirm()
 
         # Get base URL for webhook display
         base_url = _get_base_url(self.hass)
@@ -149,7 +150,6 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_NAME): cv.string,
-                vol.Optional(CONF_WEBHOOK_ID): cv.string,
                 vol.Required(
                     CONF_RESET_DELAY,
                     default=DEFAULT_RESET_DELAY
@@ -173,12 +173,7 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Confirm camera addition and show webhook URL."""
         if user_input is not None:
-            if user_input.get("add_another"):
-                # Reset unique ID check for next camera
-                self._async_abort_entries_match({})
-                return await self.async_step_add_another()
-
-            # User clicked "Finish" - create the config entry
+            # User confirmed - create the config entry
             return self.async_create_entry(
                 title=f"TP-Link VIGI ({len(self._cameras)} camera{'s' if len(self._cameras) > 1 else ''})",
                 data={"cameras": self._cameras},
@@ -195,9 +190,7 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="confirm",
-            data_schema=vol.Schema({
-                vol.Optional("add_another", default=False): bool,
-            }),
+            data_schema=vol.Schema({}),
             description_placeholders={
                 "camera_name": camera_name,
                 "webhook_url": webhook_url,
@@ -205,70 +198,7 @@ class VigiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_add_another(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Add another camera to the same config entry."""
-        errors: dict[str, str] = {}
 
-        if user_input is not None:
-            # Get camera name and webhook ID
-            camera_name = user_input[CONF_NAME]
-            webhook_id = user_input.get(CONF_WEBHOOK_ID)
-
-            # Auto-generate webhook ID if not provided
-            if not webhook_id:
-                webhook_id = _generate_webhook_id(camera_name)
-
-            # Validate webhook ID format
-            if not _validate_webhook_id(webhook_id):
-                errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
-            elif any(cam[CONF_NAME] == camera_name for cam in self._cameras):
-                errors[CONF_NAME] = "duplicate_name"
-            elif any(cam[CONF_WEBHOOK_ID] == webhook_id for cam in self._cameras):
-                # Check for duplicate in cameras being added in this flow
-                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-            elif _check_duplicate_webhook_id(self.hass, webhook_id, exclude_cameras=self._cameras):
-                # Check against all existing config entries
-                errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-            else:
-                # Store camera data with UUID
-                self._cameras.append({
-                    CONF_CAMERA_ID: str(uuid.uuid4()),  # Generate permanent UUID
-                    CONF_NAME: camera_name,
-                    CONF_WEBHOOK_ID: webhook_id,
-                    CONF_RESET_DELAY: user_input.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY),
-                })
-
-                # Show confirmation
-                return await self.async_step_confirm()
-
-        # Get base URL for display
-        base_url = _get_base_url(self.hass)
-
-        return self.async_show_form(
-            step_id="add_another",
-            data_schema=vol.Schema({
-                vol.Required(CONF_NAME): cv.string,
-                vol.Optional(CONF_WEBHOOK_ID): cv.string,
-                vol.Required(
-                    CONF_RESET_DELAY,
-                    default=DEFAULT_RESET_DELAY
-                ): selector({
-                    "number": {
-                        "min": MIN_RESET_DELAY,
-                        "max": MAX_RESET_DELAY,
-                        "mode": "box",
-                        "unit_of_measurement": "seconds",
-                    }
-                }),
-            }),
-            errors=errors,
-            description_placeholders={
-                "base_url": base_url,
-                "camera_count": str(len(self._cameras)),
-            },
-        )
 
     @staticmethod
     @callback
@@ -326,60 +256,16 @@ class VigiOptionsFlow(config_entries.OptionsFlow):
         camera = cameras[self._camera_to_edit_idx]
 
         if user_input is not None:
-            new_webhook_id = user_input[CONF_WEBHOOK_ID]
             new_reset_delay = user_input[CONF_RESET_DELAY]
-
-            # Validate webhook ID format
-            if not _validate_webhook_id(new_webhook_id):
-                errors[CONF_WEBHOOK_ID] = "invalid_webhook_id"
 
             # Validate reset delay range
             if not (MIN_RESET_DELAY <= new_reset_delay <= MAX_RESET_DELAY):
                 errors[CONF_RESET_DELAY] = "invalid_reset_delay"
 
             if not errors:
-                # Check for duplicate webhook IDs (excluding current camera)
-                # First check within same entry
-                for idx, cam in enumerate(cameras):
-                    if idx == self._camera_to_edit_idx:
-                        continue
-                    if cam[CONF_WEBHOOK_ID] == new_webhook_id:
-                        errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-                        break
-
-                # Check against other config entries (CRITICAL FIX)
-                if not errors:
-                    if _check_duplicate_webhook_id(
-                        self.hass,
-                        new_webhook_id,
-                        exclude_entry_id=self.config_entry.entry_id,
-                    ):
-                        errors[CONF_WEBHOOK_ID] = "duplicate_webhook"
-
-            if not errors:
-                # CRITICAL: Get old webhook_id BEFORE updating config
-                old_webhook_id = camera[CONF_WEBHOOK_ID]
-
-                # Update camera (preserve existing name and camera_id)
-                cameras[self._camera_to_edit_idx][CONF_WEBHOOK_ID] = new_webhook_id
+                # Update camera (preserve existing name, webhook_id, and camera_id)
+                # Webhook ID is read-only (FR-003)
                 cameras[self._camera_to_edit_idx][CONF_RESET_DELAY] = new_reset_delay
-                # Note: camera_id is NOT updated - it remains stable
-
-                # Unregister old webhook BEFORE updating entry and reloading
-                if old_webhook_id != new_webhook_id:
-                    try:
-                        webhook_unregister(self.hass, old_webhook_id)
-                        _LOGGER.info(
-                            "Unregistered old webhook /api/webhook/%s before updating to %s",
-                            old_webhook_id,
-                            new_webhook_id,
-                        )
-                    except Exception as e:  # noqa: BLE001
-                        _LOGGER.debug(
-                            "Failed to unregister old webhook %s: %s (may not exist)",
-                            old_webhook_id,
-                            e,
-                        )
 
                 # Update config entry
                 self.hass.config_entries.async_update_entry(
@@ -394,11 +280,14 @@ class VigiOptionsFlow(config_entries.OptionsFlow):
 
                 return self.async_create_entry(title="", data={})
 
-        # Show form with current values
+        # Get base URL for webhook display
+        base_url = _get_base_url(self.hass)
+        webhook_url = f"{base_url}/api/webhook/{camera[CONF_WEBHOOK_ID]}"
+
+        # Show form with current values (webhook_id is read-only, displayed in description)
         return self.async_show_form(
             step_id="edit_camera_form",
             data_schema=vol.Schema({
-                vol.Required(CONF_WEBHOOK_ID, default=camera[CONF_WEBHOOK_ID]): cv.string,
                 vol.Required(
                     CONF_RESET_DELAY,
                     default=camera.get(CONF_RESET_DELAY, DEFAULT_RESET_DELAY)
@@ -413,6 +302,8 @@ class VigiOptionsFlow(config_entries.OptionsFlow):
             }),
             errors=errors,
             description_placeholders={
-                "old_webhook_id": camera[CONF_WEBHOOK_ID],
+                "webhook_id": camera[CONF_WEBHOOK_ID],
+                "webhook_url": webhook_url,
+                "camera_name": camera[CONF_NAME],
             },
         )
