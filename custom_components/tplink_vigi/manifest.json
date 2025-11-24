@@ -1,14 +1,14 @@
 {
-  "domain": "tplink_vigi",
-  "name": "TP-Link Vigi",
   "codeowners": [
     "@tanghq33"
   ],
   "config_flow": true,
   "dependencies": [],
+  "documentation": "https://github.com/tanghq33/tplink_vigi",
+  "domain": "tplink_vigi",
   "iot_class": "local_push",
-  "requirements": [],
-  "version": "0.0.1",
   "issue_tracker": "https://github.com/tanghq33/tplink_vigi/issues",
-  "documentation": "https://github.com/tanghq33/tplink_vigi"
+  "name": "TP-Link Vigi",
+  "requirements": [],
+  "version": "0.0.1"
 }
