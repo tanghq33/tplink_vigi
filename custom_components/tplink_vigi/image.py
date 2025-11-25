@@ -97,6 +97,13 @@ class VigiCameraImage(ImageEntity):
         self._image_size: int = 0
 
     @property
+    def state(self) -> str | None:
+        """Return the state of the image entity (last update timestamp)."""
+        if self._image_last_updated:
+            return self._image_last_updated.isoformat()
+        return None
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         attributes: dict[str, Any] = {}
@@ -140,6 +147,9 @@ class VigiCameraImage(ImageEntity):
                     self._attr_name,
                     self._image_size,
                 )
+                
+                # Notify Home Assistant of state change
+                self.async_write_ha_state()
         except KeyError:
             # Camera data not found (integration unloaded or camera removed)
             pass
