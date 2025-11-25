@@ -10,7 +10,7 @@ CONF_WEBHOOK_ID = "webhook_id"
 CONF_RESET_DELAY = "reset_delay"
 
 # Default values
-DEFAULT_RESET_DELAY = 5
+DEFAULT_RESET_DELAY = 1
 
 # Validation limits
 MIN_RESET_DELAY = 1

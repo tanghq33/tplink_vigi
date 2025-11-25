@@ -5,7 +5,7 @@
         "title": "Add TP-Link VIGI Camera",
         "description": "Configure your VIGI camera. A unique webhook URL will be auto-generated.\n\nWebhook URL format: `{base_url}/api/webhook/WEBHOOK_ID`",
         "data": {
-          "name": "Camera Name",
+          "name": "Device Name",
           "reset_delay": "Auto-reset delay (seconds)"
         }
       },
