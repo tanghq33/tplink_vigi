@@ -16,14 +16,13 @@ Home Assistant custom integration for TP-Link VIGI security cameras that enables
 🌐 **Webhook-based Architecture** - Uses Home Assistant's webhook system for local push notifications  
 ⚙️ **Easy Configuration** - Simple UI-based setup through Home Assistant's config flow  
 🔧 **Customizable Settings** - Configurable auto-reset delay (1-60 seconds) for motion sensors  
-📦 **HACS Compatible** - Easy installation through Home Assistant Community Store
 
 ## Components
 
 ### Binary Sensors
 For each camera, a binary sensor is created that:
 - Detects motion and other events from your VIGI camera
-- Automatically resets to "off" state after a configurable delay (default: 5 seconds)
+- Automatically resets to "off" state after a configurable delay (default: 1 second)
 - Provides event metadata including event type, timestamp, and detection details
 - Entity ID format: `binary_sensor.<camera_name>`
 
@@ -73,6 +72,7 @@ config/
 │       ├── manifest.json
 │       ├── strings.json
 │       └── translations/
+│           └── en.json
 ```
 
 ## Configuration
@@ -83,8 +83,8 @@ config/
 2. Click **+ ADD INTEGRATION**
 3. Search for "**TP-Link VIGI**"
 4. Enter the following information:
-   - **Camera Name**: A friendly name for your camera (e.g., "Front Door Camera")
-   - **Auto-reset delay**: Time in seconds before the motion sensor resets to "off" (1-60 seconds, default: 5)
+   - **Device Name**: A friendly name for your camera (e.g., "Front Door Camera")
+   - **Auto-reset delay**: Time in seconds before the motion sensor resets to "off" (1-60 seconds, default: 1)
 5. Click **SUBMIT**
 6. The integration will display a **webhook URL** - copy this URL
 
@@ -92,23 +92,24 @@ config/
 
 After adding the camera in Home Assistant, you need to configure your VIGI camera to send events to the webhook URL:
 
-1. Log in to your VIGI camera's web interface or use the VIGI app
-2. Navigate to **Event Notifications** or **Alarm Settings**
-3. Configure **HTTP Notification** or **Webhook** settings:
-   - **URL**: Paste the webhook URL provided by Home Assistant
-   - **Method**: POST
-   - **Content Type**: multipart/form-data (for image upload)
-4. Select which events to send (motion, person detection, etc.)
-5. Save the settings
+1. Log in to your VIGI camera's web interface
+2. Navigate to **Settings** → **Event** → **Alarm Server**
+3. Add a new webhook:
+   - **IP/Domain**: IP or domain of your Home Assistant instance
+   - **URL**: `/api/webhook/<webhook_id>`
+   - **Protocol**: HTTP/HTTPS
+   - **Port**: 8123
+   - **Attach image**: Yes
+4. Save the settings
 
 #### Webhook URL Format
 ```
-https://your-home-assistant-url/api/webhook/tplink_vigi/<webhook_id>
+https://your-home-assistant-url/api/webhook/<webhook_id>
 ```
 
 Example:
 ```
-https://homeassistant.local:8123/api/webhook/tplink_vigi/front_door_camera
+https://homeassistant.local:8123/api/webhook/front_door_camera
 ```
 
 > [!IMPORTANT]
@@ -148,77 +149,6 @@ automation:
             image: "/api/image_proxy/image.front_door_camera_last_image"
 ```
 
-### Automation: Turn on Lights When Person Detected
-
-```yaml
-automation:
-  - alias: "Front Door Person Detection"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.front_door_camera
-        to: "on"
-    condition:
-      - condition: template
-        value_template: "{{ trigger.to_state.attributes.event_type == 'person' }}"
-    action:
-      - service: light.turn_on
-        target:
-          entity_id: light.front_porch
-```
-
-### Automation: Save Event Images
-
-```yaml
-automation:
-  - alias: "Save Front Door Event Images"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.front_door_camera
-        to: "on"
-    action:
-      - service: camera.snapshot
-        data:
-          entity_id: image.front_door_camera_last_image
-          filename: "/config/www/snapshots/front_door_{{ now().strftime('%Y%m%d_%H%M%S') }}.jpg"
-```
-
-### Lovelace Card Example
-
-Display the latest event image in your dashboard:
-
-```yaml
-type: picture-entity
-entity: image.front_door_camera_last_image
-name: Front Door - Last Event
-show_state: true
-show_name: true
-```
-
-Or create a more detailed card:
-
-```yaml
-type: vertical-stack
-cards:
-  - type: picture-entity
-    entity: image.front_door_camera_last_image
-    name: Front Door Camera
-  - type: entities
-    entities:
-      - entity: binary_sensor.front_door_camera
-        name: Motion Status
-      - type: attribute
-        entity: binary_sensor.front_door_camera
-        attribute: event_type
-        name: Event Type
-      - type: attribute
-        entity: binary_sensor.front_door_camera
-        attribute: last_triggered
-        name: Last Event
-      - type: attribute
-        entity: image.front_door_camera_last_image
-        attribute: image_last_updated
-        name: Image Updated
-```
 
 ## Troubleshooting
 
@@ -267,7 +197,6 @@ The integration expects webhook payloads in the following format:
 - `event_type`: Type of event detected
 - `last_triggered`: Timestamp of last event
 - `webhook_id`: Webhook ID for this camera
-- `camera_id`: Unique camera identifier
 - Additional attributes from webhook payload
 
 **Image Entity Attributes:**
@@ -277,48 +206,19 @@ The integration expects webhook payloads in the following format:
 ### Device Information
 
 Each camera creates a device in Home Assistant with:
-- **Identifiers**: Unique camera ID
 - **Name**: Camera name
 - **Manufacturer**: TP-Link
-- **Model**: VIGI Camera
-
-## Requirements
-
-- Home Assistant 2023.1 or newer
-- TP-Link VIGI camera with webhook/HTTP notification support
-- Network connectivity between camera and Home Assistant
-- (Optional) External access to Home Assistant if cameras are on a different network
 
 ## Supported VIGI Camera Models
 
-This integration should work with any TP-Link VIGI camera that supports HTTP/webhook notifications, including:
+This integration should work with any TP-Link VIGI camera that supports webhook notifications, including:
 
-- VIGI C300HP
-- VIGI C340
-- VIGI C400HP
-- VIGI C540
-- VIGI C540V
+- VIGI C340-W
+- VIGI C540-W
 - And other VIGI models with webhook support
 
 > [!NOTE]
 > If you've successfully tested this integration with a specific VIGI model, please let me know by opening an issue so I can add it to the list!
-
-## Contributing
-
-Contributions are welcome! Here's how you can help:
-
-1. **Report bugs**: Open an issue with detailed information about the problem
-2. **Suggest features**: Open an issue describing the feature you'd like to see
-3. **Submit pull requests**: Fork the repository, make your changes, and submit a PR
-4. **Test with your camera**: Let me know which VIGI models work with this integration
-
-### Development Setup
-
-1. Clone the repository
-2. Install development dependencies: `pip install -r requirements.txt` (if available)
-3. Make your changes
-4. Test with your Home Assistant instance
-5. Submit a pull request
 
 ## Support
 
